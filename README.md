@@ -7,7 +7,7 @@ Core contracts for the STON.fi DEX protocol.
 ## Contract deployments
 The current version of DEX contracts are deployed at the following addresses:
 - `EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt` for [mainnet](https://tonscan.org/address/EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt)
-- `EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt` for [testnet](https://testnet.tonscan.org/address/EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt). 
+- `EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt` for [testnet](https://testnet.tonscan.org/address/EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt) 
 
 It was built from tag [v1.0.0](https://github.com/ston-fi/dex-core/releases/tag/v1.0.0).
 
