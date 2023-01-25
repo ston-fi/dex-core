@@ -1,0 +1,52 @@
+#pragma version >=0.2.0;
+
+#include "common/stdlib.func";
+#include "common/messages.func";
+#include "lp_account/op.func";
+#include "lp_account/params.func";
+#include "lp_account/errors.func";
+#include "lp_account/storage.func";
+#include "common/utils.func";
+#include "lp_account/get.func"; 
+#include "lp_account/pool-calls.func"; 
+#include "lp_account/user-calls.func"; 
+#include "lp_account/getter.func"; 
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { 
+        return ();
+    }
+
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    load_storage();
+
+    if (flags & 1) {        
+        return ();
+    }
+
+    slice sender_address = cs~load_msg_addr();
+    force_chain(WORKCHAIN, sender_address, WRONG_WORKCHAIN);
+
+    (int op, int query_id) = (in_msg_body~load_uint(32), in_msg_body~load_uint(64));
+
+    ;; handle message from pool
+    if (equal_slices(sender_address, storage::pool_address)) {
+        handle_pool_messages(op, query_id, my_balance, msg_value, in_msg_body);
+        return ();
+    }
+
+    ;; handle message from user
+    if (equal_slices(sender_address, storage::user_address)) {
+        handle_user_messages(op, query_id, my_balance, msg_value, in_msg_body);
+        return ();
+    }
+
+    ;; make sure that the message has a valid opcode
+    if (handle_getter_messages(op, query_id, sender_address, in_msg_body)) {
+        return (); 
+    }
+
+    throw(WRONG_OP);
+}

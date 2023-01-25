@@ -1,0 +1,17 @@
+const WORKCHAIN = 0;
+
+const REQUIRED_TON_RESERVE = 10000000;
+const REQUIRED_FEES_MINT = 30000000;
+const REQUIRED_MIN_LIQUIDITY = 1000;
+const REQUIRED_MIN_COLLECT_FEES = 1000000;
+;; according to https://ton.org/docs/#/smart-contracts/tvm-instructions/instructions, coins are in the range 0...2^120 - 1
+const MAX_COINS = 1329227995784915872903807060280344575; ;; 2^120 - 1
+const PROVIDE_ADD_GAS_CONSUMPTION = 10000000;
+const FEE_DIVIDER = 10000;
+const MIN_FEE = 0; ;; 0%
+const MAX_FEE = 100; ;; 1%
+
+const HOLE_ADDRESS = "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c"a;
+slice addr_none() asm "<b b{00} s, b> <s PUSHSLICE";
+const URI_BASE = "https://lp.ston.fi/0:";
+const URI_END = ".json";

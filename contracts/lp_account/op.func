@@ -1,0 +1,7 @@
+const reset_gas = "reset_gas"c;
+const add_liquidity = "add_liquidity"c;
+const cb_add_liquidity = "cb_add_liquidity"c;
+const getter_lp_account_data = "getter_lp_account_data"c;
+const direct_add_liquidity = "direct_add_liquidity"c;
+const refund_me = "refund_me"c;
+const cb_refund_me = "cb_refund_me"c;

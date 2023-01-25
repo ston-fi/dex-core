@@ -1,0 +1,22 @@
+const FWD_GAS = 35000000; ;; 0.04 TON
+
+() send_payload(slice caller, cell payload) impure inline_ref {
+  cell msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(caller) 
+    .store_coins(0) 
+    .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_ref(payload)
+  .end_cell();
+  send_raw_message(msg, 128); ;; CARRY_ALL_BALANCE
+}
+
+(int) get_workchain(slice address) inline {
+  (int wc, _) = parse_std_addr(address);
+  return wc;
+}
+
+() force_chain(int workchain, slice address, int error_code) impure inline {
+  (int wc) = get_workchain(address);
+  throw_unless(error_code, wc == workchain);
+}

@@ -1,0 +1,28 @@
+cell pack_lp_account_data(slice user_address, slice pool_address, int amount0, int amount1) inline {
+  return begin_cell()
+    .store_slice(user_address)
+    .store_slice(pool_address)
+    .store_coins(amount0)
+    .store_coins(amount1)
+  .end_cell();
+}
+
+cell calculate_lp_account_state_init(slice user_address, slice pool_address, cell lp_account_code) inline {
+  return begin_cell()
+    .store_uint(0, 2)
+    .store_dict(lp_account_code)
+    .store_dict(pack_lp_account_data(user_address, pool_address, 0, 0))
+    .store_uint(0, 1)
+  .end_cell();
+}
+
+slice calculate_lp_account_address(cell state_init) inline {
+  return begin_cell().store_uint(4, 3)
+    .store_int(WORKCHAIN, 8)
+    .store_uint(cell_hash(state_init), 256)
+  .end_cell().begin_parse();
+}
+
+slice calculate_user_lp_account_address(slice user_address, slice pool_address, cell lp_account_code) inline {
+  return calculate_lp_account_address(calculate_lp_account_state_init(user_address, pool_address, lp_account_code));
+}

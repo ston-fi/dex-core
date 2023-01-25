@@ -1,0 +1,171 @@
+#pragma version >=0.2.0;
+
+#include "common/stdlib.func";
+#include "common/gas.func";
+#include "common/messages.func";
+#include "pool/op.func";
+#include "pool/params.func";
+#include "pool/errors.func";
+#include "common/utils.func";
+#include "pool/storage.func";
+#include "pool/utils.func";
+#include "pool/jetton-utils.func";
+#include "pool/lp_account-utils.func";
+#include "pool/amm.func"; 
+#include "pool/get.func"; 
+#include "pool/router-calls.func"; 
+#include "pool/getter.func"; 
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+  if (in_msg_body.slice_empty?()) {
+    return ();
+  }
+  slice cs = in_msg_full.begin_parse();
+  int flags = cs~load_uint(4);
+  
+  if (flags & 1) {
+    return ();
+  }
+
+  load_storage();
+
+  slice sender_address = cs~load_msg_addr();
+
+  (int op, int query_id) = (in_msg_body~load_uint(32), in_msg_body~load_uint(64));
+
+  if (op == burn_notification) { 
+    ;; Sent by LP wallet after burning LP jettons to release liquidity
+    (int jetton_amount, slice from_address, slice response_address) = (in_msg_body~load_coins(), in_msg_body~load_msg_addr(), in_msg_body~load_msg_addr());
+    int gas_required = get_gas_fee(25000, WORKCHAIN);
+    cs~load_msg_addr(); 
+    cs~load_coins(); 
+    cs~skip_bits(1); 
+    cs~load_coins(); 
+    throw_unless(INSUFFICIENT_GAS, (msg_value > gas_required) & (msg_value > cs~load_coins() * 6)); ;; use fwd_fee to estimate messages
+
+    throw_unless(INVALID_CALLER, equal_slices(calculate_user_jetton_lp_wallet_address(from_address, my_address(), storage::jetton_lp_wallet_code), sender_address));
+    throw_unless(ZERO_OUTPUT, jetton_amount > 0); 
+
+    ;; get shares
+    int amount0_out = (jetton_amount * storage::reserve0) / storage::total_supply_lp; 
+    int amount1_out = (jetton_amount * storage::reserve1) / storage::total_supply_lp; 
+    
+    ;; both are positive
+    throw_unless(ZERO_OUTPUT, (amount0_out > 0) & (amount1_out > 0));
+
+    storage::reserve0 -= amount0_out;
+    storage::reserve1 -= amount1_out;
+    storage::total_supply_lp -= jetton_amount;
+
+    int gas = 0;
+    int mode = CARRY_REMAINING_GAS;
+    if (response_address.preload_uint(2) != 0) {
+      gas = (msg_value - gas_required) / 2;
+      mode = NORMAL;
+      var body = begin_cell()
+        .store_uint(excesses, 32)
+        .store_uint(query_id, 64);
+      send_message_nobounce(gas, response_address, body.end_cell(), IGNORE_ERRORS);
+    }
+    call_pay_to(gas, mode, query_id, from_address, burn_ok, amount0_out, amount1_out);
+    save_storage();
+    return ();
+  }
+  
+  if (op == cb_add_liquidity) {
+    ;; Sent by user's lp_account after adding liquidity
+    ;; not throwable
+    (int tot_am0, int tot_am1, slice user_address, int min_lp_out) = (in_msg_body~load_coins(), in_msg_body~load_coins(), in_msg_body~load_msg_addr(), in_msg_body~load_coins());
+    cell acc_state_init = calculate_lp_account_state_init(user_address, my_address(), storage::lp_account_code); 
+    throw_unless(INVALID_CALLER, equal_slices(calculate_lp_account_address(acc_state_init), sender_address));
+
+    int liquidity = 0;
+    slice to = "";
+
+    if (storage::total_supply_lp == 0) { 
+      ;; handle initial liquidity
+      liquidity = sqrt(tot_am0 * tot_am1) / REQUIRED_MIN_LIQUIDITY;
+      to = addr_none(); ;; Lock the initial liquidity, so it will be impossible to fully drain the pool.
+    } else {
+      int to_mint0 = (tot_am0 * storage::total_supply_lp) / storage::reserve0;
+      int to_mint1 = (tot_am1 * storage::total_supply_lp) / storage::reserve1;
+      liquidity = min(to_mint0, to_mint1); ;; mint the minimum amount of liquidity, excesses will be shared proportionally across the pool
+
+      to = user_address;
+    }
+
+    storage::reserve0 += tot_am0;
+    storage::reserve1 += tot_am1;
+    storage::total_supply_lp += liquidity;
+
+    ;; checks if
+    ;; - the user will get less than the minimum amount of liquidity
+    ;; - reserves exceeds max supply
+    if ((liquidity < min_lp_out) | ((storage::reserve0 > MAX_COINS) | (storage::reserve1 > MAX_COINS))) {      
+      var body = begin_cell()
+        .store_uint(add_liquidity, 32)
+        .store_uint(query_id, 64)
+        .store_coins(tot_am0)
+        .store_coins(tot_am1)
+        .store_coins(0); ;; hardencode to zero to avoid minting loop between pool and lp_account
+      ;; state_init needed since lp_account might be already destroyed
+      send_message_with_stateinit(0, sender_address, acc_state_init, body.end_cell(), CARRY_REMAINING_GAS + IGNORE_ERRORS);
+    } else {
+      _mint_lp(query_id, to, liquidity);
+      save_storage();
+    }
+    return ();
+  }
+
+  if (op == cb_refund_me) {
+    ;; Sent by user's lp_account after adding liquidity
+    ;; throwable
+    (int tot_am0, int tot_am1, slice user_address) = (in_msg_body~load_coins(), in_msg_body~load_coins(), in_msg_body~load_msg_addr());
+    throw_unless(INVALID_CALLER, equal_slices(calculate_user_lp_account_address(user_address, my_address(), storage::lp_account_code), sender_address));
+    call_pay_to(0, CARRY_REMAINING_GAS, query_id, user_address, refund_ok, tot_am0, tot_am1);
+    return ();
+  }
+
+  ;; handle swap, provide_lp and governance messages
+  if (equal_slices(sender_address, storage::router_address)) {
+    handle_router_messages(op, query_id, my_balance, msg_value, in_msg_body);
+    return ();
+  }
+
+  ;; called by anyone
+  if (op == collect_fees) { ;; throwable
+    throw_unless(NO_LIQUIDITY, storage::total_supply_lp > REQUIRED_MIN_LIQUIDITY);
+    throw_unless(LOW_LIQUIDITY, (storage::collected_token0_protocol_fee > REQUIRED_MIN_COLLECT_FEES) & (storage::collected_token1_protocol_fee > REQUIRED_MIN_COLLECT_FEES));
+    throw_unless(INVALID_RECIPIENT, ~ equal_slices(storage::protocol_fee_address, HOLE_ADDRESS));
+    int gas_required = get_gas_fee(40000, WORKCHAIN);
+
+    throw_unless(INSUFFICIENT_GAS, (msg_value - gas_required) > 1000000000); ;; 1 ton
+    int gas = (msg_value - gas_required) / 4;
+    int reward0 = storage::collected_token0_protocol_fee / 1000;
+    int reward1 = storage::collected_token1_protocol_fee / 1000;
+    storage::collected_token0_protocol_fee -= reward0;
+    storage::collected_token1_protocol_fee -= reward1;
+
+    throw_unless(ZERO_OUTPUT, (reward0 > 0) & (reward1 > 0));
+    throw_unless(ZERO_OUTPUT, (storage::collected_token0_protocol_fee > 0) & (storage::collected_token1_protocol_fee > 0));
+
+    call_pay_to(gas * 3, NORMAL, query_id, storage::protocol_fee_address, 0, storage::collected_token0_protocol_fee, storage::collected_token1_protocol_fee); ;; revert if fails
+    call_pay_to(gas, IGNORE_ERRORS, query_id, sender_address, 0, reward0, reward1);
+
+    storage::collected_token0_protocol_fee = 0;
+    storage::collected_token1_protocol_fee = 0;
+    save_storage();
+    return ();
+  }
+
+  cs~load_msg_addr(); 
+  cs~load_coins(); 
+  cs~skip_bits(1); 
+  cs~load_coins(); 
+  ;; make sure that the message has a valid opcode
+  if (handle_getter_messages(msg_value, cs~load_coins(), op, query_id, sender_address, in_msg_body)) {
+    return (); 
+  }
+
+  throw(WRONG_OP);
+}

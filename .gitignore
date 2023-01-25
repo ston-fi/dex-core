@@ -1,0 +1,10 @@
+build/*.fif
+build/*.cell
+node_modules
+.env*
+!.env.example
+.wget-hsts
+bin
+.vs_code
+/.idea
+.DS_Store

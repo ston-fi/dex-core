@@ -1,0 +1,9 @@
+const ZERO_OUTPUT = 81;
+const INVALID_CALLER = 82;
+const INSUFFICIENT_GAS = 83;
+const WRONG_WORKCHAIN = 85;
+const WRONG_ADDRESS = 86;
+const INVALID_AMOUNT = 87;
+const INVALID_CALL = 88;
+
+const WRONG_OP = 0xffff;

@@ -1,0 +1,37 @@
+const transfer = 0xf8a7ea5;
+const transfer_notification = 0x7362d09c;
+const internal_transfer = 0x178d4519;
+const excesses = 0xd53276db;
+const burn = 0x595f07bc;
+const burn_notification = 0x7bdd97de;
+
+const provide_wallet_address = 0x2c76b973;
+const take_wallet_address = 0xd1735400;
+
+
+const swap = "swap"c;
+const provide_lp = "provide_lp"c;
+const pay_to = "pay_to"c;
+
+;; swap callbacks opcodes
+const swap_refund_no_liq = "swap_refund_no_liq"c;
+const swap_refund_reserve_err = "swap_refund_reserve_err"c;
+
+const swap_ok_ref = "swap_ok_ref"c;
+const swap_ok = "swap_ok"c;
+const burn_ok = "burn_ok"c;
+const refund_ok = "refund_ok"c;
+
+const collect_fees = "collect_fees"c;
+const set_fees = "set_fees"c;
+const reset_gas = "reset_gas"c;
+const add_liquidity = "add_liquidity"c;
+const cb_add_liquidity = "cb_add_liquidity"c;
+const cb_refund_me = "cb_refund_me"c;
+
+;; async "get" calls
+const getter_pool_data = "getter_pool_data"c;
+const getter_expected_outputs = "getter_expected_outputs"c;
+const getter_lp_account_address = "getter_lp_account_address"c;
+const getter_expected_tokens = "getter_expected_tokens"c;
+const getter_expected_liquidity = "getter_expected_liquidity"c;

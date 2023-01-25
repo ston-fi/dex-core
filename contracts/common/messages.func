@@ -1,0 +1,51 @@
+const NORMAL = 0;
+const PAID_EXTERNALLY = 1;
+const IGNORE_ERRORS = 2;
+
+const DESTROY_IF_ZERO = 32;
+const CARRY_REMAINING_GAS = 64;
+const CARRY_ALL_BALANCE = 128;
+
+() send_empty_message(int amount, slice to, int mode) impure inline_ref {
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to)
+        .store_coins(amount)
+        .store_uint(0, 107)
+    .end_cell();
+    send_raw_message(msg, mode);
+}
+
+() send_simple_message(int amount, slice to, cell body, int mode) impure inline_ref {
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to)
+        .store_coins(amount)
+        .store_uint(1, 107)
+        .store_ref(body)
+    .end_cell();
+    send_raw_message(msg, mode);
+}
+
+() send_message_nobounce(int amount, slice to, cell body, int mode) impure inline_ref {
+    cell msg = begin_cell()
+        .store_uint(0x10, 6)
+        .store_slice(to)
+        .store_coins(amount)
+        .store_uint(1, 107)
+        .store_ref(body)
+    .end_cell();
+    send_raw_message(msg, mode);
+}
+
+() send_message_with_stateinit(int amount, slice to, cell state_init, cell body, int mode) impure inline_ref {
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to)
+        .store_coins(amount)
+        .store_uint(7, 108)
+        .store_ref(state_init)
+        .store_ref(body)
+    .end_cell();
+    send_raw_message(msg, mode);
+}

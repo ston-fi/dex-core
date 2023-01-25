@@ -1,0 +1,25 @@
+;; onchain get methods
+
+(int) handle_getter_messages(int op, int query_id, slice sender_address, slice in_msg_body) impure inline {
+    raw_reserve(0, 4);
+
+    if(op == getter_pool_address){ 
+        (slice token0, slice token1) = (in_msg_body~load_msg_addr(), in_msg_body~load_msg_addr());
+
+        throw_if(WRONG_ADDRESS, equal_slices(token0, token1)); 
+        force_chain(WORKCHAIN, token0, WRONG_WORKCHAIN);
+        force_chain(WORKCHAIN, token1, WRONG_WORKCHAIN);
+
+        (_, slice pool_address) = get_pool_state_init_and_address(token0, token1);
+        
+        cell payload = begin_cell()
+            .store_uint(getter_pool_address, 32)
+            .store_uint(query_id, 64)
+            .store_slice(pool_address)
+        .end_cell();
+        send_payload(sender_address, payload);
+        return (true);
+    }
+
+    return (false); ;; wrong op
+}

@@ -1,0 +1,166 @@
+#pragma version >=0.2.0;
+
+#include "common/stdlib.func";
+#include "common/gas.func";
+#include "common/jetton-utils.func";
+#include "common/messages.func";
+#include "router/op.func";
+#include "router/params.func";
+#include "router/errors.func";
+#include "router/storage.func";
+#include "router/utils.func";
+#include "common/utils.func";
+#include "router/get.func"; 
+#include "router/admin-calls.func"; 
+#include "router/getter.func"; 
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+
+    var cs = in_msg_full.begin_parse();
+    var flags = cs~load_uint(4);
+    
+    load_storage();
+
+    if (flags & 1) {
+        return ();
+    }
+    
+    slice sender_address = cs~load_msg_addr();
+    cs~load_msg_addr(); ;; skip dst
+    cs~load_coins(); ;; skip value
+    cs~skip_bits(1); ;; skip extracurrency collection
+    cs~load_coins(); ;; skip ihr_fee
+    int fwd_fee = cs~load_coins();
+
+    force_chain(WORKCHAIN, sender_address, WRONG_WORKCHAIN);
+
+    (int op, int query_id) = (in_msg_body~load_uint(32), in_msg_body~load_uint(64));
+
+    ;; send tokens, called from pools (on swap, liquidity providing, refund etc)
+    if (op == pay_to) { 
+        int gas_required = get_gas_fee(20000, WORKCHAIN);
+        throw_unless(INSUFFICIENT_GAS, msg_value > gas_required);
+        (slice owner, int exit_code, cell cs_d) = (in_msg_body~load_msg_addr(), in_msg_body~load_uint(32), in_msg_body~load_ref()); 
+        
+        ;; parse ref cell
+        slice psd = cs_d.begin_parse();
+        (int amount0_out, slice token0_address, int amount1_out, slice token1_address) = (psd~load_coins(), psd~load_msg_addr(), psd~load_coins(), psd~load_msg_addr());
+
+        (_, slice pool_address) = get_pool_state_init_and_address(token0_address, token1_address);
+        throw_unless(INVALID_CALLER, equal_slices(pool_address, sender_address)); ;; check if its a valid pool
+        
+        int ton_amount = 0;
+        int mode = CARRY_REMAINING_GAS;
+
+        ;; Either one or both amounts must be non-zero
+        if ((amount0_out > 0) & (amount1_out > 0)) {
+            ;; Divide remaining ton_amount between two transactions
+            ton_amount = (msg_value - gas_required) / 2;
+            mode = NORMAL;
+        }
+
+        if (amount0_out > 0) {
+            var body0 = create_simple_transfer_body(query_id, 0, amount0_out, owner);
+            body0 = body0.store_uint(exit_code, 32); ;; append exit code
+            send_simple_message(ton_amount, token0_address, body0.end_cell(), mode | IGNORE_ERRORS);
+        }
+
+        if (amount1_out > 0) {
+            var body1 = create_simple_transfer_body(query_id, 0, amount1_out, owner);
+            body1 = body1.store_uint(exit_code, 32); ;; append exit code
+            send_simple_message(ton_amount, token1_address, body1.end_cell(), mode | IGNORE_ERRORS);
+        }
+
+        return ();
+    }
+
+    if (op == transfer_notification) {
+        (int jetton_amount, slice from_user) = (in_msg_body~load_coins(), in_msg_body~load_msg_addr());
+        cell ref_cs = in_msg_body~load_ref(); 
+        slice ref_ds = ref_cs.begin_parse();
+        
+        throw_unless(INVALID_AMOUNT, jetton_amount > 0);
+        
+        (int transferred_op, slice token_wallet1) = (ref_ds~load_uint(32), ref_ds~load_msg_addr());
+        force_chain(WORKCHAIN, token_wallet1, WRONG_WORKCHAIN);
+
+        ;; check if the call is valid
+        if ((fwd_fee * 6 >  msg_value) | equal_slices(sender_address, token_wallet1) | storage::is_locked) {
+            ;; refund jettons
+            var body = create_simple_transfer_body(query_id, 0, jetton_amount, from_user);
+            if (storage::is_locked) {
+                body = body.store_uint(transfer_bounce_locked, 32);
+            } else {
+                body = body.store_uint(transfer_bounce_invalid_request, 32);
+            }
+            send_simple_message(0, sender_address, body.end_cell(), CARRY_REMAINING_GAS);
+        } else {
+            ;; route call to the correct pool
+            if (transferred_op == swap) {
+                (int min_out, slice to_address, int has_ref) = (ref_ds~load_coins(), ref_ds~load_msg_addr(), ref_ds~load_uint(1));
+                (_, slice pool_address) = get_pool_state_init_and_address(sender_address, token_wallet1);
+                
+                builder body = begin_cell()
+                    .store_uint(swap, 32)
+                    .store_uint(query_id, 64)
+                    .store_slice(to_address)
+                    .store_slice(sender_address)
+                    .store_coins(jetton_amount)
+                    .store_coins(min_out)
+                    .store_uint(has_ref, 1);
+
+                builder body_ref = begin_cell()
+                    .store_slice(from_user); ;; real caller
+                
+                if (has_ref) {
+                    slice ref_address = ref_ds~load_msg_addr();
+                    body_ref = body_ref.store_slice(ref_address);
+                }
+
+                body = body.store_ref(body_ref.end_cell());
+
+                send_simple_message(0, pool_address, body.end_cell(), CARRY_REMAINING_GAS);
+                return ();
+            }
+
+            if (transferred_op == provide_lp) {
+                int min_lp_out = ref_ds~load_coins();
+                (cell state_init, slice pool_address) = get_pool_state_init_and_address(sender_address, token_wallet1);
+
+                builder msg_body = begin_cell()
+                    .store_uint(provide_lp, 32)
+                    .store_uint(query_id, 64)
+                    .store_slice(from_user)
+                    .store_coins(min_lp_out);
+
+                if (slice_hash(sender_address) > slice_hash(token_wallet1)) {
+                    msg_body = msg_body.store_coins(jetton_amount);
+                    msg_body = msg_body.store_coins(0);
+                } else {
+                    msg_body = msg_body.store_coins(0);
+                    msg_body = msg_body.store_coins(jetton_amount);
+                }
+
+                send_message_with_stateinit(0, pool_address, state_init, msg_body.end_cell(), CARRY_REMAINING_GAS);
+                return ();
+            }
+        }
+        return ();
+    }
+
+    ;; handle governance message from admin to change pool parameters
+    if (equal_slices(sender_address, storage::admin_address)) {
+        handle_admin_messages(op, query_id, my_balance, msg_value, in_msg_body);
+        return ();
+    }
+
+    ;; make sure that the message has been processed
+    if (handle_getter_messages(op, query_id, sender_address, in_msg_body)) {
+        return (); 
+    }
+
+    throw(WRONG_OP);
+}

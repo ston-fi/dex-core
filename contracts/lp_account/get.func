@@ -1,0 +1,4 @@
+(slice, slice, int, int) get_lp_account_data() method_id {
+    load_storage();
+    return (storage::user_address, storage::pool_address, storage::amount0, storage::amount1);
+}

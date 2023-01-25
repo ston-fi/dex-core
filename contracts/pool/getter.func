@@ -1,0 +1,126 @@
+;; handle onchain 'get' calls
+
+(int) handle_getter_messages(int msg_value, int fwd_fee, int op, int query_id, slice sender_address, slice in_msg_body) impure inline {
+    raw_reserve(0, 4);
+
+    if (op == getter_pool_data) { 
+        var payload = begin_cell()
+            .store_uint(getter_pool_data, 32)
+            .store_uint(query_id, 64)
+            .store_coins(storage::reserve0)
+            .store_coins(storage::reserve1)
+            .store_slice(storage::token0_address)
+            .store_slice(storage::token1_address)
+            .store_ref(begin_cell()
+                .store_uint(storage::lp_fee, 8)
+                .store_uint(storage::protocol_fee, 8)
+                .store_uint(storage::ref_fee, 8)
+                .store_slice(storage::protocol_fee_address)
+                .store_coins(storage::collected_token0_protocol_fee)
+                .store_coins(storage::collected_token1_protocol_fee)
+            .end_cell());
+        send_payload(sender_address, payload.end_cell());
+        return (true);
+    }
+
+    if (op == getter_expected_outputs) { 
+        throw_unless(NO_LIQUIDITY, storage::total_supply_lp > REQUIRED_MIN_LIQUIDITY);
+        (int amount, slice token_wallet) = (in_msg_body~load_coins(), in_msg_body~load_msg_addr());
+
+        int out = 0;
+        int ok = false;
+        int protocol_fee_out = 0;
+        int ref_fee_out = 0;
+
+        if (equal_slices(token_wallet, storage::token0_address)) {
+            ok = true;
+            (out, protocol_fee_out, ref_fee_out) = get_amount_out(false, amount, storage::reserve0, storage::reserve1);
+        }
+        if (equal_slices(token_wallet, storage::token1_address)) {
+            ok = true;
+            (out, protocol_fee_out, ref_fee_out) = get_amount_out(false, amount, storage::reserve1, storage::reserve0);
+        }
+    
+        throw_unless(INVALID_TOKEN, ok);
+    
+        var payload = begin_cell()
+            .store_uint(getter_expected_outputs, 32)
+            .store_uint(query_id, 64)
+            .store_coins((out <= 0 ? 0 : out))
+            .store_coins(protocol_fee_out)
+            .store_coins(ref_fee_out);
+        send_payload(sender_address, payload.end_cell());
+        return (true);
+    }
+
+    if (op == getter_lp_account_address) { 
+        slice user_address = in_msg_body~load_msg_addr();
+    
+        var payload = begin_cell()
+            .store_uint(getter_expected_outputs, 32)
+            .store_uint(query_id, 64)
+            .store_slice(calculate_user_lp_account_address(user_address, my_address(), storage::lp_account_code));
+        send_payload(sender_address, payload.end_cell());
+        return (true);
+    }
+
+    if (op == getter_expected_tokens) { 
+        (slice user_address, int amount0, int amount1) = (in_msg_body~load_msg_addr(), in_msg_body~load_coins(), in_msg_body~load_coins());
+
+        int to_mint0 = (amount1 * storage::total_supply_lp) / storage::reserve0;
+        int to_mint1 = (amount0 * storage::total_supply_lp) / storage::reserve1;
+
+        int liquidity = min(to_mint0, to_mint1);
+    
+        var payload = begin_cell()
+            .store_uint(getter_expected_tokens, 32)
+            .store_uint(query_id, 64)
+            .store_coins(liquidity);
+        send_payload(sender_address, payload.end_cell());
+        return (true);
+    }
+
+    if (op == getter_expected_liquidity) { 
+        int jetton_amount = in_msg_body~load_coins();
+
+        throw_unless(ZERO_OUTPUT, jetton_amount > 0); 
+
+        int amount0_out = (jetton_amount * storage::reserve0) / storage::total_supply_lp; 
+        int amount1_out = (jetton_amount * storage::reserve1) / storage::total_supply_lp; 
+      
+        throw_unless(ZERO_OUTPUT, (amount0_out > 0) & (amount1_out > 0));
+
+        var payload = begin_cell()
+            .store_uint(getter_expected_liquidity, 32)
+            .store_uint(query_id, 64)
+            .store_coins(amount0_out)
+            .store_coins(amount1_out);
+        send_payload(sender_address, payload.end_cell());
+        return (true);
+    }
+
+    if (op == provide_wallet_address) {
+        ;; Reference implementation:
+        ;; https://github.com/ton-blockchain/token-contract/blob/920c5aa3a33ede6405b5653147895c9e27bfe535/ft/jetton-minter-discoverable.fc#L100
+        throw_unless(75, msg_value > fwd_fee + PROVIDE_ADD_GAS_CONSUMPTION);
+
+        (slice owner_address, int include_address?) = (in_msg_body~load_msg_addr(), in_msg_body~load_uint(1));
+
+        cell included_address = include_address? ? begin_cell().store_slice(owner_address).end_cell() : null();
+
+        var msg = begin_cell()
+            .store_uint(take_wallet_address, 32)
+            .store_uint(query_id, 64);
+
+        if (is_resolvable?(owner_address)) {
+            msg = msg.store_slice(calculate_user_jetton_lp_wallet_address(owner_address, my_address(), storage::jetton_lp_wallet_code));
+        } else {
+            msg = msg.store_uint(0, 2); ;; addr_none
+        }
+
+        send_payload(sender_address, msg.store_maybe_ref(included_address).end_cell());
+        return (true);
+    }
+    
+    return (false); ;; wrong op
+}

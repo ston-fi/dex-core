@@ -1,0 +1,25 @@
+const transfer = 0xf8a7ea5;
+const transfer_notification = 0x7362d09c;
+
+const swap = "swap"c;
+const provide_lp = "provide_lp"c;
+const pay_to = "pay_to"c;
+const collect_fees = "collect_fees"c;
+const set_fees = "set_fees"c;
+const reset_gas = "reset_gas"c;
+const reset_pool_gas = "reset_pool_gas"c;
+const lock = "lock"c;
+const unlock = "unlock"c;
+
+const init_code_upgrade = "init_code_upgrade"c;
+const init_admin_upgrade = "init_admin_upgrade"c;
+const cancel_code_upgrade = "cancel_code_upgrade"c;
+const cancel_admin_upgrade = "cancel_admin_upgrade"c;
+const finalize_upgrades = "finalize_upgrades"c;
+
+;; async "get" calls
+const getter_pool_address = "getter_pool_address"c;
+
+;; transfer refund statuses
+const transfer_bounce_locked = "transfer_bounce_locked"c;
+const transfer_bounce_invalid_request = "transfer_bounce_invalid_request"c;

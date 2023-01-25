@@ -1,0 +1,28 @@
+global int storage::is_locked;
+global slice storage::admin_address; 
+global cell storage::jetton_lp_wallet_code; 
+global cell storage::pool_code;
+global cell storage::lp_account_code; 
+global cell storage::temp_upgrade;
+
+() load_storage() impure inline {
+    slice ds = get_data().begin_parse();
+    storage::is_locked = ds~load_uint(1);
+    storage::admin_address = ds~load_msg_addr();
+    storage::jetton_lp_wallet_code = ds~load_ref();
+    storage::pool_code = ds~load_ref();
+    storage::lp_account_code = ds~load_ref();
+    storage::temp_upgrade = ds~load_ref();
+}
+
+() save_storage() impure inline {
+    set_data(begin_cell()
+        .store_uint(storage::is_locked, 1)
+        .store_slice(storage::admin_address)
+        .store_ref(storage::jetton_lp_wallet_code)
+        .store_ref(storage::pool_code)
+        .store_ref(storage::lp_account_code)
+        .store_ref(storage::temp_upgrade)
+    .end_cell());
+}
+

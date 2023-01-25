@@ -1,0 +1,8 @@
+(int, slice, slice, cell) load_storage() inline {
+    slice ds = get_data().begin_parse();
+    return (ds~load_coins(), ds~load_msg_addr(), ds~load_msg_addr(), ds~load_ref());
+}
+
+() save_storage(int balance, slice owner_address, slice jetton_master_address, cell jetton_wallet_code) impure inline {
+    set_data(pack_jetton_lp_wallet_data(balance, owner_address, jetton_master_address, jetton_wallet_code));
+}

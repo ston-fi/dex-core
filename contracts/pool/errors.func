@@ -1,0 +1,13 @@
+const NO_LIQUIDITY = 80;
+const ZERO_OUTPUT = 81;
+const INVALID_CALLER = 82;
+const INSUFFICIENT_GAS = 83;
+const FEE_OUT_RANGE = 85;
+const INVALID_TOKEN = 86;
+const LOW_AMOUNT = 87;
+const LOW_LIQUIDITY = 88;
+const WRONG_K = 89;
+const MATH_ERROR = 90;
+const INVALID_RECIPIENT = 91;
+
+const WRONG_OP = 0xffff;

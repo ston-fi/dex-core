@@ -1,0 +1,85 @@
+;; get methods
+(int, int, slice, slice, int, int, int, slice, int, int) get_pool_data() method_id {
+    load_storage();
+    return (
+        storage::reserve0,
+        storage::reserve1,
+        storage::token0_address,
+        storage::token1_address,
+        storage::lp_fee,
+        storage::protocol_fee, 
+        storage::ref_fee,
+        storage::protocol_fee_address,
+        storage::collected_token0_protocol_fee, 
+        storage::collected_token1_protocol_fee
+    );
+}
+
+(int, int, int) get_expected_outputs(int amount, slice token_wallet) method_id {
+    load_storage();
+    throw_unless(NO_LIQUIDITY, storage::total_supply_lp > REQUIRED_MIN_LIQUIDITY);
+    int out = 0;
+    int protocol_fee_out = 0;
+    int ref_fee_out = 0;
+
+    if (equal_slices(token_wallet, storage::token0_address)) {
+            (out, protocol_fee_out, ref_fee_out) =  get_amount_out(
+            false, 
+            amount, 
+            storage::reserve0, 
+            storage::reserve1
+        );
+    }
+    if (equal_slices(token_wallet, storage::token1_address)) {
+            (out, protocol_fee_out, ref_fee_out) =  get_amount_out(
+            false, 
+            amount, 
+            storage::reserve1, 
+            storage::reserve0
+        );
+    }
+    return ((out < 0 ? 0 : out), protocol_fee_out, ref_fee_out);
+}
+
+;; estimate expected lp tokens minted when providing liquidity
+(int) get_expected_tokens(int amount0, int amount1) method_id {
+    load_storage();
+    return min(amount0 * storage::total_supply_lp / storage::reserve0, amount1 * storage::total_supply_lp / storage::reserve1);
+}
+
+(int, int) get_expected_liquidity(int jetton_amount) method_id {
+    load_storage();
+    throw_unless(ZERO_OUTPUT, jetton_amount > 0); 
+
+    int amount0_out = (jetton_amount * storage::reserve0) / storage::total_supply_lp; 
+    int amount1_out = (jetton_amount * storage::reserve1) / storage::total_supply_lp; 
+    
+    throw_unless(ZERO_OUTPUT, (amount0_out > 0) & (amount1_out > 0));
+
+    return (amount0_out, amount1_out);
+}
+
+slice get_lp_account_address(slice owner_address) method_id {
+    load_storage();
+    return calculate_user_lp_account_address(owner_address, my_address(), storage::lp_account_code); 
+}
+
+;; standard jetton 'get' methods 
+(int, int, slice, cell, cell) get_jetton_data() method_id {
+    load_storage();
+    (_, int hashpart) = parse_std_addr(my_address());
+
+    cell content_lp = begin_cell()
+        .store_uint(0x01, 8)
+        .store_slice(URI_BASE)
+        .store_slice(address_to_hex_string(hashpart))
+        .store_slice(URI_END)
+    .end_cell();
+
+    return (storage::total_supply_lp, -1, storage::router_address, content_lp, storage::jetton_lp_wallet_code);
+}
+
+slice get_wallet_address(slice owner_address) method_id {
+    load_storage();
+    return calculate_user_jetton_lp_wallet_address(owner_address, my_address(), storage::jetton_lp_wallet_code); 
+}

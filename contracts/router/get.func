@@ -1,0 +1,23 @@
+;; get methods
+
+
+(slice) get_pool_address(slice token0, slice token1) method_id {
+    load_storage();
+    throw_if(WRONG_ADDRESS, equal_slices(token0, token1)); 
+    force_chain(WORKCHAIN, token0, WRONG_WORKCHAIN);
+    force_chain(WORKCHAIN, token1, WRONG_WORKCHAIN);
+    (_, slice pool_address) = get_pool_state_init_and_address(token0, token1);
+    return pool_address;
+}
+
+(int, slice, cell, cell, cell, cell) get_router_data() method_id {
+    load_storage();
+    return (
+        storage::is_locked == 1,
+        storage::admin_address,
+        storage::temp_upgrade,
+        storage::pool_code,
+        storage::jetton_lp_wallet_code,
+        storage::lp_account_code
+    );
+}

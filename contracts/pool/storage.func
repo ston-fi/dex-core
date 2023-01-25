@@ -1,0 +1,59 @@
+global slice storage::router_address;
+global int storage::lp_fee;
+global int storage::protocol_fee;
+global int storage::ref_fee;
+global slice storage::token0_address;
+global slice storage::token1_address;
+global int storage::total_supply_lp; 
+global int storage::collected_token0_protocol_fee;
+global int storage::collected_token1_protocol_fee; 
+global slice storage::protocol_fee_address;
+global int storage::reserve0;
+global int storage::reserve1; 
+global cell storage::jetton_lp_wallet_code;
+global cell storage::lp_account_code;
+
+
+
+() load_storage() impure inline {
+    slice ds = get_data().begin_parse();
+    storage::router_address = ds~load_msg_addr();
+    storage::lp_fee = ds~load_uint(8);
+    storage::protocol_fee = ds~load_uint(8);
+    storage::ref_fee = ds~load_uint(8);
+    storage::token0_address = ds~load_msg_addr();
+    storage::token1_address = ds~load_msg_addr();
+    storage::total_supply_lp = ds~load_coins(); 
+
+    cell dc_0 = ds~load_ref(); slice ds_0 = dc_0.begin_parse();
+    storage::collected_token0_protocol_fee = ds_0~load_coins();
+    storage::collected_token1_protocol_fee = ds_0~load_coins(); 
+    storage::protocol_fee_address = ds_0~load_msg_addr();
+    storage::reserve0 = ds_0~load_coins();
+    storage::reserve1 = ds_0~load_coins(); 
+
+    storage::jetton_lp_wallet_code = ds~load_ref();
+    storage::lp_account_code = ds~load_ref();
+}
+
+() save_storage() impure inline {
+    set_data(begin_cell()
+        .store_slice(storage::router_address)
+        .store_uint(storage::lp_fee, 8) 
+        .store_uint(storage::protocol_fee, 8) 
+        .store_uint(storage::ref_fee, 8) 
+        .store_slice(storage::token0_address)
+        .store_slice(storage::token1_address) 
+        .store_coins(storage::total_supply_lp)
+        .store_ref(begin_cell()
+            .store_coins(storage::collected_token0_protocol_fee) 
+            .store_coins(storage::collected_token1_protocol_fee) 
+            .store_slice(storage::protocol_fee_address)
+            .store_coins(storage::reserve0) 
+            .store_coins(storage::reserve1)
+        .end_cell())
+        .store_ref(storage::jetton_lp_wallet_code)
+        .store_ref(storage::lp_account_code)
+    .end_cell());
+}
+

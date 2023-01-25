@@ -1,0 +1,49 @@
+() handle_user_messages(int op, int query_id, int my_balance, int msg_value, slice in_msg_body) impure inline {
+
+    if(op == refund_me) {
+        throw_unless(NO_LIQUIDITY, (storage::amount0 > 0) | (storage::amount1 > 0));
+
+        builder msg = begin_cell()
+            .store_uint(cb_refund_me, 32)
+            .store_uint(query_id, 64)
+            .store_coins(storage::amount0)
+            .store_coins(storage::amount1)
+            .store_slice(storage::user_address);
+        send_simple_message(0, storage::pool_address, msg.end_cell(), CARRY_REMAINING_GAS);
+
+        storage::amount0 = 0;
+        storage::amount1 = 0;
+        save_storage();
+        return ();
+    }
+
+    if(op == direct_add_liquidity) {
+        (int am0, int am1, int min_lp_out) = (in_msg_body~load_coins(), in_msg_body~load_coins(), in_msg_body~load_coins());
+        throw_unless(ZERO_OUTPUT, min_lp_out & ((am0 > 1000) & (am1 > 1000)));
+
+        storage::amount0 -= am0;
+        storage::amount1 -= am1;
+
+        throw_unless(NO_LIQUIDITY, (storage::amount0 >= 0) & (storage::amount1 >= 0));
+
+        builder msg = begin_cell()
+            .store_uint(cb_add_liquidity, 32)
+            .store_uint(query_id, 64)
+            .store_coins(am0)
+            .store_coins(am1)
+            .store_slice(storage::user_address)
+            .store_coins(min_lp_out);
+        send_simple_message(0, storage::pool_address, msg.end_cell(), CARRY_REMAINING_GAS);
+
+        save_storage();
+        return ();
+    }
+
+    if (op == reset_gas) { 
+        throw_unless(INSUFFICIENT_GAS, my_balance > REQUIRED_TON_RESERVE);
+        send_empty_message(my_balance - REQUIRED_TON_RESERVE, storage::user_address, NORMAL);
+        return ();
+    }
+
+    throw(WRONG_OP);
+}

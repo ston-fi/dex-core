@@ -1,0 +1,34 @@
+(int, int, int) get_amount_out(int has_ref, int amount_in, int reserve_in, int reserve_out) inline {
+  int amount_in_with_fee = amount_in * (FEE_DIVIDER - storage::lp_fee);
+  int base_out = (amount_in_with_fee * reserve_out) / (reserve_in * FEE_DIVIDER + amount_in_with_fee);
+  
+  int protocol_fee_out = 0;
+  int ref_fee_out = 0;
+
+  if (storage::protocol_fee > 0) {
+    protocol_fee_out = divc(base_out * storage::protocol_fee, FEE_DIVIDER);
+  }
+  
+  if (has_ref & (storage::ref_fee > 0)) {
+    ref_fee_out = divc(base_out * storage::ref_fee, FEE_DIVIDER);
+  }
+  
+  base_out -= protocol_fee_out + ref_fee_out;
+  return (base_out, protocol_fee_out, ref_fee_out);
+}
+
+
+() _mint_lp(int query_id, slice to, int amount) impure inline {
+  cell state_init = calculate_jetton_lp_wallet_state_init(to, my_address(), storage::jetton_lp_wallet_code);
+  slice to_wallet_address = calculate_jetton_lp_wallet_address(state_init);
+  var body = begin_cell()
+    .store_uint(internal_transfer, 32)
+    .store_uint(query_id, 64)
+    .store_coins(amount)
+    .store_slice(my_address())
+    .store_slice(to)
+    .store_coins(0) 
+    .store_uint(0, 1);
+  send_message_with_stateinit(0, to_wallet_address, state_init, body.end_cell(), CARRY_REMAINING_GAS);
+}
+

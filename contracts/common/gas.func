@@ -1,0 +1,42 @@
+cell get_gas_config_param(int wc) inline {
+    if (wc == -1) {
+        return config_param(20);
+    } else {
+        return config_param(21);
+    }
+}
+
+(slice, (int, int)) load_gas_flat_pfx(slice param) inline {
+    var flat_gas_limit = param~load_uint(64);
+    var flat_gas_price = param~load_uint(64);
+    return (param, (flat_gas_limit, flat_gas_price));
+}
+
+(slice, int) load_gas_prices(slice param) inline {
+    var gas_price = param~load_uint(64);
+    return (param, gas_price);
+}
+
+(slice, (int, int, int)) load_gas_limits_prices(slice param) inline_ref {
+    var contructor_tag = param~load_uint(8);
+    if (contructor_tag == 0xd1) {
+        var (flat_gas_limit, flat_gas_price) = param~load_gas_flat_pfx();
+        var (_, _, gas_price) = param~load_gas_limits_prices();
+        return (param, (flat_gas_limit, flat_gas_price, gas_price));
+    } elseif ((contructor_tag == 0xde) | (contructor_tag == 0xdd)) {
+        var gas_price = param~load_gas_prices();
+        return (param, (0, 0, gas_price));
+    } else {
+        return (param, (0, 0, 0));
+    }
+}
+
+(int, int, int) get_gas_limits_prices(int wc) inline {
+    var gas_price_config = get_gas_config_param(wc).begin_parse();
+    return gas_price_config~load_gas_limits_prices();
+}
+
+int get_gas_fee(int gas_amount, int wc) inline_ref {
+    var (flat_gas_limit, flat_gas_price, gas_price) = get_gas_limits_prices(wc);
+    return gas_amount < flat_gas_limit ? flat_gas_price : (gas_amount - flat_gas_limit) * (gas_price >> 16) + flat_gas_price;
+}

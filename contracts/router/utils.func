@@ -1,0 +1,62 @@
+(slice) get_serialized_address(int workchain, int address) inline {
+    return (begin_cell()
+        .store_uint(4, 3)
+        .store_uint(workchain, 8)
+        .store_uint(address, 256)
+    ).end_cell().begin_parse();
+}
+
+cell pack_pool_data(slice token0_address, slice token1_address, cell jetton_lp_wallet_code, cell lp_account_code) inline_ref {
+    return begin_cell()
+        .store_slice(my_address())      ;; storage::router_address
+        .store_uint(20, 8)              ;; storage::lp_fee        (0.2% * FEE_DIVIDER)
+        .store_uint(10, 8)               ;; storage::protocol_fee (0.1% * FEE_DIVIDER)
+        .store_uint(10, 8)              ;; storage::ref_fee       (0.1% * FEE_DIVIDER)
+        .store_slice(token0_address)    ;; storage::token0_address
+        .store_slice(token1_address)    ;; storage::token1_address
+        .store_coins(0)                 ;; storage::total_supply_lp
+        .store_ref(begin_cell()
+            .store_coins(0)             ;; storage::collected_token0_protocol_fee
+            .store_coins(0)             ;; storage::collected_token1_protocol_fee
+            .store_slice(HOLE_ADDRESS)  ;; storage::protocol_fee_address
+            .store_coins(0)             ;; storage::reserve0
+            .store_coins(0)             ;; storage::reserve1
+        .end_cell())
+        .store_ref(jetton_lp_wallet_code)   ;; storage::jetton_lp_wallet_code
+        .store_ref(lp_account_code)         ;; storage::lp_account_code
+    .end_cell();
+}
+
+(cell, slice) get_pool_state_init_and_address(slice token0_address, slice token1_address) inline {
+    builder state_init_builder = begin_cell()
+        .store_uint(0, 2)
+        .store_dict(storage::pool_code);
+
+    if (slice_hash(token0_address) > slice_hash(token1_address)) {
+        state_init_builder = state_init_builder.store_dict(pack_pool_data(token0_address, token1_address, storage::jetton_lp_wallet_code, storage::lp_account_code));
+    } else {
+        state_init_builder = state_init_builder.store_dict(pack_pool_data(token1_address, token0_address, storage::jetton_lp_wallet_code, storage::lp_account_code));
+    }
+
+    cell state_init = state_init_builder
+        .store_uint(0, 1)
+        .end_cell();
+    
+    return (state_init, get_serialized_address(WORKCHAIN, cell_hash(state_init)));
+}
+
+(cell) pack_temp_upgrade(int end_code, cell code, int end_admin, slice admin) inline {
+    cell data = begin_cell()
+        .store_uint(end_code, 64)
+        .store_uint(end_admin, 64)
+        .store_slice(admin)
+        .store_ref(code)
+    .end_cell();
+    return data;
+}
+
+(int, cell, int, slice) unpack_temp_upgrade(cell c_data) inline {
+    slice s_data = c_data.begin_parse();
+    (int end_code, int end_admin, slice admin, cell code) = (s_data~load_uint(64), s_data~load_uint(64), s_data~load_msg_addr(), s_data~load_ref());
+    return (end_code, code, end_admin, admin);
+}

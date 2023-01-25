@@ -1,0 +1,111 @@
+;; messages from admin
+
+() handle_admin_messages(int op, int query_id, int my_balance, int msg_value, slice in_msg_body) impure inline {
+    if (op == set_fees) { 
+        (int new_lp_fee, int new_protocol_fee, int new_ref_fee, slice new_protocol_fee_address) = (in_msg_body~load_uint(8), in_msg_body~load_uint(8), in_msg_body~load_uint(8), in_msg_body~load_msg_addr());
+        cell ref_cs = in_msg_body~load_ref(); 
+        slice ref_ds = ref_cs.begin_parse();
+        (slice jetton_wallet0, slice jetton_wallet1) = (ref_ds~load_msg_addr(), ref_ds~load_msg_addr());
+        (_, slice pool_address) = get_pool_state_init_and_address(jetton_wallet0, jetton_wallet1);
+        var body = begin_cell()
+            .store_uint(set_fees, 32)
+            .store_uint(query_id, 64)
+            .store_uint(new_lp_fee, 8)
+            .store_uint(new_protocol_fee, 8)
+            .store_uint(new_ref_fee, 8)
+            .store_slice(new_protocol_fee_address);
+        send_simple_message(0, pool_address, body.end_cell(), CARRY_REMAINING_GAS);
+        return ();
+    }
+
+    if (op == collect_fees){ 
+        (slice jetton_wallet0, slice jetton_wallet1) = (in_msg_body~load_msg_addr(), in_msg_body~load_msg_addr());
+        (_, slice pool_address) = get_pool_state_init_and_address(jetton_wallet0, jetton_wallet1);
+        var body = begin_cell()
+            .store_uint(collect_fees, 32)
+            .store_uint(query_id, 64);
+        send_simple_message(0, pool_address, body.end_cell(), CARRY_REMAINING_GAS);
+        return ();
+    }
+
+    if (op == lock) { 
+        storage::is_locked = 1; ;; true = -1 but is_locked is uint
+        save_storage();
+        return ();
+    }
+
+    if (op == unlock) { 
+        storage::is_locked = false;
+        save_storage();
+        return ();
+    }
+    
+    if (op == init_code_upgrade) { 
+        (int end_code, _, int end_admin, slice admin) = unpack_temp_upgrade(storage::temp_upgrade);
+        throw_unless(INVALID_CALL, end_code == 0); ;; upgrade already in progress
+        storage::temp_upgrade = pack_temp_upgrade(now() + SEVENDAYS,  in_msg_body~load_ref(), end_admin, admin);
+        save_storage();
+        return ();
+    }
+
+    if (op == init_admin_upgrade) { 
+        (int end_code, cell new_code, int end_admin, _) = unpack_temp_upgrade(storage::temp_upgrade);
+        throw_unless(INVALID_CALL, end_admin == 0); ;; upgrade already in progress
+        storage::temp_upgrade = pack_temp_upgrade(end_code, new_code, now() + TWODAYS, in_msg_body~load_msg_addr());
+        save_storage();
+        return ();
+    }
+    
+    if (op == cancel_admin_upgrade) { 
+        (int end_code, cell code, int end_admin, _) = unpack_temp_upgrade(storage::temp_upgrade);
+        throw_unless(INVALID_CALL, end_admin > 0); 
+        storage::temp_upgrade = pack_temp_upgrade(end_code, code, 0, HOLE_ADDRESS);
+        save_storage();
+        return ();
+    }
+
+    if (op == cancel_code_upgrade) { 
+        (int end_code, _, int end_admin, slice admin) = unpack_temp_upgrade(storage::temp_upgrade);
+        throw_unless(INVALID_CALL, end_code > 0); 
+        storage::temp_upgrade = pack_temp_upgrade(0, empty_cell(), end_admin, admin);
+        save_storage();
+        return ();
+    }
+
+    ;; valid for both upgrades
+    if (op == finalize_upgrades) { 
+        (int end_code, cell new_code, int end_admin, slice new_admin) = unpack_temp_upgrade(storage::temp_upgrade);
+        throw_unless(INVALID_CALL, (end_code + end_admin) > 0); ;; make sure at least one upgrade process is in progress
+
+        if ((end_code > 0) & (now() >= end_code)) {
+            set_code(new_code);
+            end_code = 0;
+            new_code = empty_cell();
+        }
+
+        if ((end_admin > 0) & (now() >= end_admin)) {
+            storage::admin_address = new_admin;
+            end_admin = 0;
+            new_admin = HOLE_ADDRESS;
+        }
+
+        storage::temp_upgrade = pack_temp_upgrade(end_code, new_code, end_admin, new_admin);
+        save_storage();
+        return ();
+    }
+
+    if (op == reset_gas) { 
+        send_empty_message(my_balance - REQUIRED_TON_RESERVE, storage::admin_address, NORMAL);
+        return ();
+    }
+
+    if (op == reset_pool_gas) { 
+        (slice jetton_wallet0, slice jetton_wallet1) = (in_msg_body~load_msg_addr(), in_msg_body~load_msg_addr());
+        (_, slice pool_address) = get_pool_state_init_and_address(jetton_wallet0, jetton_wallet1);
+        var body = begin_cell().store_uint(reset_gas, 32).store_uint(query_id, 64);
+        send_simple_message(0, pool_address, body.end_cell(), CARRY_REMAINING_GAS);
+        return ();
+    }
+
+    throw(WRONG_OP);
+}

@@ -1,0 +1,31 @@
+;; handle pool calls
+
+() handle_pool_messages(int op, int query_id, int my_balance, int msg_value, slice in_msg_body) impure inline {
+
+    if (op == add_liquidity) { 
+
+        (int new_amount0, int new_amount1, int min_lp_out) = (in_msg_body~load_coins(), in_msg_body~load_coins(), in_msg_body~load_coins());
+
+        storage::amount0 += new_amount0;
+        storage::amount1 += new_amount1;
+
+        if (min_lp_out & ((storage::amount0 > 1000) & (storage::amount1 > 1000))){
+            builder msg = begin_cell()
+                .store_uint(cb_add_liquidity, 32)
+                .store_uint(query_id, 64)
+                .store_coins(storage::amount0)
+                .store_coins(storage::amount1)
+                .store_slice(storage::user_address)
+                .store_coins(min_lp_out);
+            send_payload(storage::pool_address, msg.end_cell());
+            storage::amount0 = 0;
+            storage::amount1 = 0;
+        }
+
+        save_storage();
+        return ();
+
+    }
+    
+    throw(WRONG_OP);
+}
