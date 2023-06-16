@@ -73,7 +73,9 @@ slice address_to_hex_string(int value) inline {
     int mask = 15;
     builder buffer = begin_cell();
 
-    while (value != 0) {
+    int i = 64;
+    while (i > 0) {
+      i -= 1;
       int curr = (value & mask);
       if(curr > 9){
         buffer = buffer.store_uint(55 + curr, 8);
